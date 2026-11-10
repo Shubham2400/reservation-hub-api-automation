@@ -7,17 +7,120 @@ import io.qameta.allure.Epic;
 import io.qameta.allure.Feature;
 import io.qameta.allure.Story;
 import io.restassured.response.Response;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.Arguments;
+
+import java.time.LocalDate;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 @Epic("Reservation Hub API Automation")
 @Feature("Negative and Boundary Testing")
 @Tag("negative")
+
 public class NegativeBookingTests {
 
+    // Generate test payloads for individual parameterized executions
+    static Stream<Arguments> invalidPayloadScenarios() {
+
+        LocalDate checkin = LocalDate.now().plusDays(7);
+        LocalDate checkout = LocalDate.now().plusDays(11);
+
+        String validCheckin = checkin.toString();
+        String validCheckout = checkout.toString();
+
+        return Stream.of(
+
+                Arguments.of(
+                        "Incorrect JSON data types",
+                        bookingPayload(
+                                "\"not-a-number\"",
+                                "\"not-a-boolean\"",
+                                validCheckin,
+                                validCheckout
+                        )
+                ),
+
+                Arguments.of(
+                        "Empty request body",
+                        ""
+                ),
+
+                Arguments.of(
+                        "Missing required fields",
+                        "{\"firstname\":\"Test\"}"
+                ),
+
+                Arguments.of(
+                        "Zero total price",
+                        bookingPayload(
+                                "0", "false",
+                                validCheckin, validCheckout
+                        )
+                ),
+
+                Arguments.of(
+                        "Negative total price",
+                        bookingPayload(
+                                "-100", "false",
+                                validCheckin, validCheckout
+                        )
+                ),
+
+                Arguments.of(
+                        "Checkout before check-in",
+                        bookingPayload(
+                                "100", "false",
+                                checkin.plusDays(6).toString(),
+                                checkin.plusDays(1).toString()
+                        )
+                ),
+
+                Arguments.of(
+                        "Malformed check-in date",
+                        bookingPayload(
+                                "100", "false",
+                                "not-a-date",
+                                validCheckout
+                        )
+                )
+        );
+    }
+
+    // Reusable JSON payload builder
+    private static String bookingPayload(
+            String totalPrice,
+            String depositPaid,
+            String checkin,
+            String checkout) {
+
+        return """
+                {
+                  "firstname": "Test",
+                  "lastname": "User",
+                  "totalprice": %s,
+                  "depositpaid": %s,
+                  "bookingdates": {
+                    "checkin": "%s",
+                    "checkout": "%s"
+                  },
+                  "additionalneeds": "None"
+                }
+                """.formatted(
+                totalPrice,
+                depositPaid,
+                checkin,
+                checkout
+        );
+    }
+
+    // Record actual API behavior in Allure
     private void printResult(String scenario, Response response) {
 
         String details =
@@ -26,7 +129,11 @@ public class NegativeBookingTests {
                         + "\nResponse Body:\n" + response.asString();
 
         Allure.step("Record result: " + scenario, () -> {
-            Allure.addAttachment("Exploratory API Result", details);
+
+            Allure.addAttachment(
+                    "Exploratory API Result",
+                    details
+            );
 
             System.out.println("\n===== " + scenario + " =====");
             System.out.println("Status Code: " + response.getStatusCode());
@@ -34,12 +141,14 @@ public class NegativeBookingTests {
         });
     }
 
+    // Generate authentication token for cleanup
     private String getAuthToken() {
 
         Response authResponse = Allure.step(
                 "Generate authentication token for test cleanup",
                 () -> BookingApiClient.createAuthToken(
-                        "admin", "password123")
+                        "admin", "password123"
+                )
         );
 
         assertEquals(200, authResponse.getStatusCode());
@@ -52,9 +161,9 @@ public class NegativeBookingTests {
         return token;
     }
 
+    // Clean up bookings created by exploratory scenarios
     private void cleanupIfCreated(Response response, String token) {
 
-        // A successful booking creation returns HTTP 200.
         if (response.getStatusCode() != 200) {
             return;
         }
@@ -77,6 +186,12 @@ public class NegativeBookingTests {
                         + "\nHTTP Status: " + deleteResponse.getStatusCode()
         );
 
+        assertEquals(
+                201,
+                deleteResponse.getStatusCode(),
+                "Exploratory booking cleanup should succeed"
+        );
+
         System.out.println(
                 "Cleanup booking ID " + bookingId
                         + " | Delete status: "
@@ -84,33 +199,25 @@ public class NegativeBookingTests {
         );
     }
 
-    @Test
-    @Story("Incorrect JSON data types")
-    @DisplayName("Explore API behavior for incorrect booking data types")
-    public void exploreIncorrectDataTypes() {
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("invalidPayloadScenarios")
+    @Story("Invalid and boundary booking payloads")
+    @DisplayName("Explore API behavior for invalid and boundary payloads")
+    public void exploreInvalidBookingPayloads(
+            String scenario,
+            String invalidPayload) {
 
         String token = getAuthToken();
 
-        String invalidPayload = """
-            {
-              "firstname": "Test",
-              "lastname": "User",
-              "totalprice": "not-a-number",
-              "depositpaid": "not-a-boolean",
-              "bookingdates": {
-                "checkin": "2026-11-14",
-                "checkout": "2026-11-18"
-              },
-              "additionalneeds": "None"
-            }
-            """;
-
         Response response = Allure.step(
-                "Submit booking with incorrect JSON data types",
+                "Submit scenario: " + scenario,
                 () -> BookingApiClient.createBookingWithRawBody(invalidPayload)
         );
 
-        printResult("Incorrect data types", response);
+        assertNotNull(response, "API response should not be null");
+
+        printResult(scenario, response);
+
         cleanupIfCreated(response, token);
     }
 
@@ -126,118 +233,10 @@ public class NegativeBookingTests {
 
         printResult("Nonexistent booking ID", response);
 
-        assertEquals(404, response.getStatusCode(),
-                "A nonexistent booking should return HTTP 404");
-    }
-
-    @Test
-    @Story("Invalid and boundary booking payloads")
-    @DisplayName("Explore API behavior for invalid booking payloads")
-    public void exploreInvalidBookingPayloads() {
-
-        String token = getAuthToken();
-
-        // 1. Empty request body
-        Response emptyBody = Allure.step(
-                "Submit an empty booking request body",
-                () -> BookingApiClient.createBookingWithRawBody("")
+        assertEquals(
+                404,
+                response.getStatusCode(),
+                "A nonexistent booking should return HTTP 404"
         );
-
-        printResult("Empty request body", emptyBody);
-        cleanupIfCreated(emptyBody, token);
-
-        // 2. Missing required fields
-        Response missingFields = Allure.step(
-                "Submit a booking with missing required fields",
-                () -> BookingApiClient.createBookingWithRawBody(
-                        "{\"firstname\":\"Test\"}")
-        );
-
-        printResult("Missing required fields", missingFields);
-        cleanupIfCreated(missingFields, token);
-
-        // 3. Zero booking price
-        Response zeroPrice = Allure.step(
-                "Submit a booking with zero total price",
-                () -> BookingApiClient.createBookingWithRawBody("""
-                    {
-                      "firstname": "Test",
-                      "lastname": "User",
-                      "totalprice": 0,
-                      "depositpaid": false,
-                      "bookingdates": {
-                        "checkin": "2026-11-14",
-                        "checkout": "2026-11-18"
-                      },
-                      "additionalneeds": "None"
-                    }
-                    """)
-        );
-
-        printResult("Zero total price", zeroPrice);
-        cleanupIfCreated(zeroPrice, token);
-
-        // 4. Negative booking price
-        Response negativePrice = Allure.step(
-                "Submit a booking with negative total price",
-                () -> BookingApiClient.createBookingWithRawBody("""
-                    {
-                      "firstname": "Test",
-                      "lastname": "User",
-                      "totalprice": -100,
-                      "depositpaid": false,
-                      "bookingdates": {
-                        "checkin": "2026-11-14",
-                        "checkout": "2026-11-18"
-                      },
-                      "additionalneeds": "None"
-                    }
-                    """)
-        );
-
-        printResult("Negative total price", negativePrice);
-        cleanupIfCreated(negativePrice, token);
-
-        // 5. Checkout before check-in
-        Response invalidDateOrder = Allure.step(
-                "Submit a booking where checkout is before check-in",
-                () -> BookingApiClient.createBookingWithRawBody("""
-                    {
-                      "firstname": "Test",
-                      "lastname": "User",
-                      "totalprice": 100,
-                      "depositpaid": false,
-                      "bookingdates": {
-                        "checkin": "2026-11-20",
-                        "checkout": "2026-11-15"
-                      },
-                      "additionalneeds": "None"
-                    }
-                    """)
-        );
-
-        printResult("Checkout before check-in", invalidDateOrder);
-        cleanupIfCreated(invalidDateOrder, token);
-
-        // 6. Malformed check-in date
-        Response malformedDate = Allure.step(
-                "Submit a booking with malformed check-in date",
-                () -> BookingApiClient.createBookingWithRawBody("""
-                    {
-                      "firstname": "Test",
-                      "lastname": "User",
-                      "totalprice": 100,
-                      "depositpaid": false,
-                      "bookingdates": {
-                        "checkin": "not-a-date",
-                        "checkout": "2026-11-18"
-                      },
-                      "additionalneeds": "None"
-                    }
-                    """)
-        );
-
-        printResult("Malformed check-in date", malformedDate);
-        cleanupIfCreated(malformedDate, token);
     }
 }

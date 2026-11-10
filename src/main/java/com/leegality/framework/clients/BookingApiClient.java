@@ -56,6 +56,15 @@ public class BookingApiClient {
                 .when()
                 .get("/booking");
     }
+    // Get bookings using optional query filters
+    public static Response getBookings(Map<String, String> filters) {
+
+        return given()
+                .spec(getBaseRequestSpec())
+                .queryParams(filters)
+                .when()
+                .get("/booking");
+    }
 
     // Update an entire booking using PUT
     public static Response updateBooking(
