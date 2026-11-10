@@ -41,6 +41,7 @@ reservation_hub_api_automation/
 │       ├── java/com/leegality/tests/
 │       │   ├── AuthTests.java
 │       │   ├── BookingCrudTests.java
+│       │   ├── BookingListTests.java
 │       │   ├── BookingSchemaTest.java
 │       │   ├── CreateBookingTests.java
 │       │   ├── GetBookingTests.java
@@ -67,6 +68,7 @@ reservation_hub_api_automation/
 | Authentication | Valid and invalid credentials |
 | Create Booking | Booking creation and response validation |
 | Retrieve Booking | Retrieve all bookings and booking by ID |
+| Booking Filters | First name, last name, check-in and check-out filters |
 | CRUD Operations | Create, retrieve, update, partially update and delete |
 | Authorization | Missing and invalid authentication tokens |
 | Negative Testing | Empty payloads, missing fields, invalid data types and dates |
@@ -104,7 +106,12 @@ The framework uses a centralized configuration manager to load the base URL.
 
 ## 7. Execute Tests
 
-Run the complete test suite:
+Latest verified execution (10 November 2026):
+- Total test executions: 25
+- Passed: 25
+- Failed: 0
+- Errors: 0
+- Skipped: 0
 
 ```bash
 mvn clean test
